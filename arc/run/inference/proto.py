@@ -30,6 +30,8 @@ def main():
     )
     args = parser.parse_args()
 
+    torch.cuda.empty_cache()
+
     # load train data
     train_problems, train_solutions = load_data("train")
     problem_ids = list(train_problems.keys())

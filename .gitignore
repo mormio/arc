@@ -1,4 +1,7 @@
-/data/*
+arc/data/*.json
 /.venv
-/nbs/*
+arc/nbs/*
 .env
+*.sh
+*.egg-info
+*.pyc

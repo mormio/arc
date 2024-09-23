@@ -4,6 +4,17 @@ import inspect
 from typing import List
 from arc.functions_library import functions as fn_
 
+FUNCTION_CLASSES = {
+    0: 'flip_vertical', 
+    1: 'flip_horizontal', 
+    2: 'duplicate_cols', 
+    3: 'duplicate_rows', 
+    4: 'shift_cols', 
+    5: 'shift_rows', 
+    6: 'transpose', 
+    7: 'rotate_90',
+}
+
 def get_def_and_docstring(function_string: str) -> str:
     """ extract function def + docstring as a summary for the llm to use it. """
     if '"""' in function_string:
@@ -70,3 +81,9 @@ def list_all_function_defs(fpath:str = None) -> List[str]:
     defs = [get_def_and_docstring(f) for f in functions]
 
     return defs 
+
+def functions_to_vector(functions_list):
+    vec = []
+    for f in FUNCTION_CLASSES.values():
+        vec.extend([1] if f in functions_list else [0])
+    return vec

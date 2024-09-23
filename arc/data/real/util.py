@@ -11,7 +11,7 @@ TRAIN_SOLUTIONS_PATH = 'arc-agi_training_solutions.json'
 def load_data(split):
 
     home_dir = os.environ['HOME']
-    data_dir = os.path.join(home_dir, 'arc', 'arc', 'data')
+    data_dir = os.path.join(home_dir, 'arc', 'arc', 'data', 'real')
 
     if split == 'test': # challenges only 
         with open(os.path.join(data_dir, TEST_CHALLENGES_PATH), 'r') as f:

@@ -5,3 +5,5 @@ arc/nbs/*
 *.sh
 *.egg-info
 *.pyc
+*.json
+arc/data/synthetic/generate_proto.ipynb

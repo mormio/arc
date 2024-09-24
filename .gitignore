@@ -7,3 +7,7 @@ arc/nbs/*
 *.pyc
 *.json
 arc/data/synthetic/generate_proto.ipynb
+.neptune/*
+arc-dsl/*
+re-arc/*
+arc/data/rearc/*

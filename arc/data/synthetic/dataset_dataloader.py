@@ -2,6 +2,12 @@ from arc.functions_library import functions_to_vector
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
 import torch
+import os
+import json
+import inspect
+from .util import get_solver
+from arc.arcdsl import solvers as solvers_mod
+from arc.arcdsl import PRIMITIVES
 
 
 class ARCSyntheticDataset(Dataset):
@@ -30,8 +36,45 @@ class ARCSyntheticDataset(Dataset):
         }
 
 
+class REARCDataset(ARCSyntheticDataset):
+    def __init__(self, task_dir):
+
+        self.data = []
+        problem_names = [x.strip(".json") for x in os.listdir(task_dir)]
+        for problem in problem_names:
+            # load synthetic data
+            data_path = os.path.join(task_dir, problem + ".json")
+            with open(data_path, "r") as f:
+                problem_data = json.load(f)
+
+            # load the solver
+            solver = get_solver(problem, solvers_mod)
+            solver_source = inspect.getsource(solver)
+
+            # check which primitives are in the solver
+            # make it into the label vector
+            label = [0] * len(PRIMITIVES)
+            for i, prim in enumerate(PRIMITIVES):
+                if prim in solver_source:
+                    label[i] = 1
+
+            # append all the examples to the training data
+            for sample in problem_data:
+                self.data.append(
+                    (sample["input"], sample["output"], label, problem)
+                )
+
+
 class ArcSyntheticDataLoader(DataLoader):
-    def __init__(self, dataset, batch_size=1, shuffle=False, num_workers=0):
+    def __init__(
+        self,
+        dataset,
+        batch_size=32,
+        shuffle=False,
+        num_workers=0,
+        normalize=True,
+        channels=1,
+    ):
         super().__init__(
             dataset,
             batch_size=batch_size,
@@ -39,6 +82,8 @@ class ArcSyntheticDataLoader(DataLoader):
             num_workers=num_workers,
             collate_fn=self.arc_collate_fn,
         )
+        self.normalize = normalize
+        self.channels = channels
 
     @staticmethod
     def pad_matrix(matrix, max_height, max_width):
@@ -50,8 +95,7 @@ class ArcSyntheticDataLoader(DataLoader):
             constant_values=-1,
         )
 
-    @classmethod
-    def arc_collate_fn(cls, batch):
+    def arc_collate_fn(self, batch):
         inputs = [np.array(item["input"]) for item in batch]
         outputs = [np.array(item["output"]) for item in batch]
 
@@ -62,20 +106,31 @@ class ArcSyntheticDataLoader(DataLoader):
         max_output_width = max(m.shape[1] for m in outputs)
 
         max_height = max(max_input_height, max_output_height)
-        max_width = max(
-            max_input_width, max_output_width
-        )  # supports concatenation
+        max_width = max(max_input_width, max_output_width)
 
         # pad + concatenate each input-output pair
         combined_matrices = []
         for input_matrix, output_matrix in zip(inputs, outputs):
-            padded_input = cls.pad_matrix(input_matrix, max_height, max_width)
-            padded_output = cls.pad_matrix(
-                output_matrix, max_height, max_width
-            )
+            padded_input = self.pad_matrix(input_matrix, max_height, max_width)
+            padded_output = self.pad_matrix(output_matrix, max_height, max_width)
+
+            # normalize
+            if self.normalize:
+                padded_input = (padded_input + 1) / 10
+                padded_output = (padded_output + 1) / 10
 
             # concatenate along the width dimension
-            combined = np.concatenate([padded_input, padded_output], axis=1)
+            if self.channels == 1:
+                combined = np.concatenate([padded_input, padded_output], axis=1)
+                combined = np.expand_dims(combined, axis=0)  # Add channel dimension
+            # stack as 2-channel input 
+            elif self.channels == 2:
+                combined = np.stack([padded_input, padded_output], axis=0)
+            # stack with the diff as a 3-channel input 
+            elif self.channels == 3:
+                diff = padded_output - padded_input
+                combined = np.stack([padded_input, padded_output, diff], axis=0)
+            
             combined_matrices.append(combined)
 
         # stack them into a batch
@@ -83,10 +138,7 @@ class ArcSyntheticDataLoader(DataLoader):
 
         # Convert to torch tensor
         combined_input = torch.from_numpy(combined_input).float()
-
-        labels = torch.tensor(
-            [item["label"] for item in batch], dtype=torch.float
-        )
+        labels = torch.tensor(np.array([item["label"] for item in batch]), dtype=torch.float)
         problem_ids = [item["problem_id"] for item in batch]
 
         return {

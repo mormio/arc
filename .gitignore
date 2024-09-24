@@ -8,6 +8,8 @@ arc/nbs/*
 *.json
 arc/data/synthetic/generate_proto.ipynb
 .neptune/*
-arc-dsl/*
-re-arc/*
+.arc-dsl/*
+.re-arc/*
 arc/data/rearc/*
+*.err
+*.out

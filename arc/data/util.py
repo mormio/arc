@@ -3,6 +3,9 @@ import importlib
 import torch
 from torch.utils.data import random_split
 
+from .re_arc.util import load_data as load_rearc_dataset
+from .real.util import load_data as load_arc_dataset
+
 
 def get_solver(problem, solvers_module=None):
     if not solvers_module:
@@ -29,6 +32,11 @@ def split_dataset(dataset, val_split=0.2, seed=0):
     return train_dataset, val_dataset
 
 
-def load_data(dataset="ARC"):
-    # TODO make this load either ARC dataset, REARC dataset, or synthetic dataset..
-    pass
+def load_data(dataset="ARC", *args):
+    if dataset == "ARC":
+        data = load_arc_dataset(*args)
+    elif dataset == "REARC":
+        data = load_rearc_dataset(*args)
+    # TODO: elif dataset == "synthetic"
+
+    return data

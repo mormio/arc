@@ -23,7 +23,7 @@ def main():
         model_name = "meta-llama/Meta-Llama-3.1-8B-Instruct"
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     tokenizer.pad_token_id = tokenizer.bos_token_id
-    model = AutoModelForCausalLM.from_pretrained(
+    llm = AutoModelForCausalLM.from_pretrained(
         model_name,
         device_map="auto",
         torch_dtype=torch.bfloat16,
@@ -31,7 +31,7 @@ def main():
 
     # load dataset
 
-    return resnet, model
+    return resnet, llm
 
 
 if __name__ == "__main__":

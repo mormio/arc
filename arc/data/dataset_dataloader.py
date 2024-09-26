@@ -8,7 +8,8 @@ from torch.utils.data import DataLoader, Dataset
 
 from arc.arcdsl import PRIMITIVES
 from arc.arcdsl import solvers as solvers_mod
-from arc.data import get_solver
+
+from .util import get_solver
 
 
 class REARCDataset(Dataset):

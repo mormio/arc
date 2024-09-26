@@ -1,46 +1,22 @@
-from arc.functions_library import functions_to_vector
-from torch.utils.data import Dataset, DataLoader
+import inspect
+import json
+import os
+
 import numpy as np
 import torch
-import os
-import json
-import inspect
-from .util import get_solver
-from arc.arcdsl import solvers as solvers_mod
+from torch.utils.data import DataLoader, Dataset
+
 from arc.arcdsl import PRIMITIVES
+from arc.arcdsl import solvers as solvers_mod
+from arc.data import get_solver
 
 
-class ARCSyntheticDataset(Dataset):
-    def __init__(self, synthetic_data):
-        self.data = []
-
-        for problem_id, problem_data in synthetic_data.items():
-            for sample in problem_data["samples"]:
-                input_matrix = sample["input"]
-                output_matrix = sample["output"]
-                label_vector = functions_to_vector(problem_data["functions"])
-                self.data.append(
-                    (input_matrix, output_matrix, label_vector, problem_id)
-                )
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, idx):
-        input_matrix, output_matrix, label_vector, problem_id = self.data[idx]
-        return {
-            "input": input_matrix,
-            "output": output_matrix,
-            "label": np.array(label_vector, dtype=np.float32),
-            "problem_id": problem_id,
-        }
-
-
-class REARCDataset(ARCSyntheticDataset):
-    def __init__(self, task_dir):
-
+class REARCDataset(Dataset):
+    def __init__(self, task_dir, debug=False):
         self.data = []
         problem_names = [x.strip(".json") for x in os.listdir(task_dir)]
+        if debug:
+            problem_names = problem_names[:25]
         for problem in problem_names:
             # load synthetic data
             data_path = os.path.join(task_dir, problem + ".json")
@@ -64,8 +40,20 @@ class REARCDataset(ARCSyntheticDataset):
                     (sample["input"], sample["output"], label, problem)
                 )
 
+    def __len__(self):
+        return len(self.data)
 
-class ArcSyntheticDataLoader(DataLoader):
+    def __getitem__(self, idx):
+        input_matrix, output_matrix, label_vector, problem_id = self.data[idx]
+        return {
+            "input": input_matrix,
+            "output": output_matrix,
+            "label": np.array(label_vector, dtype=np.float32),
+            "problem_id": problem_id,
+        }
+
+
+class ARCDataLoader(DataLoader):
     def __init__(
         self,
         dataset,
@@ -112,7 +100,9 @@ class ArcSyntheticDataLoader(DataLoader):
         combined_matrices = []
         for input_matrix, output_matrix in zip(inputs, outputs):
             padded_input = self.pad_matrix(input_matrix, max_height, max_width)
-            padded_output = self.pad_matrix(output_matrix, max_height, max_width)
+            padded_output = self.pad_matrix(
+                output_matrix, max_height, max_width
+            )
 
             # normalize
             if self.normalize:
@@ -120,17 +110,11 @@ class ArcSyntheticDataLoader(DataLoader):
                 padded_output = (padded_output + 1) / 10
 
             # concatenate along the width dimension
-            if self.channels == 1:
-                combined = np.concatenate([padded_input, padded_output], axis=1)
-                combined = np.expand_dims(combined, axis=0)  # Add channel dimension
-            # stack as 2-channel input 
-            elif self.channels == 2:
-                combined = np.stack([padded_input, padded_output], axis=0)
-            # stack with the diff as a 3-channel input 
-            elif self.channels == 3:
-                diff = padded_output - padded_input
-                combined = np.stack([padded_input, padded_output, diff], axis=0)
-            
+            combined = np.concatenate([padded_input, padded_output], axis=1)
+            combined = np.expand_dims(
+                combined, axis=0
+            )  # Add channel dimension
+
             combined_matrices.append(combined)
 
         # stack them into a batch
@@ -138,7 +122,9 @@ class ArcSyntheticDataLoader(DataLoader):
 
         # Convert to torch tensor
         combined_input = torch.from_numpy(combined_input).float()
-        labels = torch.tensor(np.array([item["label"] for item in batch]), dtype=torch.float)
+        labels = torch.tensor(
+            np.array([item["label"] for item in batch]), dtype=torch.float
+        )
         problem_ids = [item["problem_id"] for item in batch]
 
         return {

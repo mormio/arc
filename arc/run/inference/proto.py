@@ -1,16 +1,15 @@
 import argparse
-import os 
+import os
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from arc.data import load_data, create_train_string
+from arc.data import create_train_string, load_data
 from arc.functions_library import list_all_function_defs
 from arc.run import writing_llm_prompt
 
 
 def main():
-
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--debug", action="store_true", help="Debug mode (faster, no logging)"
@@ -26,7 +25,7 @@ def main():
     parser.add_argument(
         "--num_return_sequences",
         default=5,
-        help="Number of outputs to generate in parallel per input"
+        help="Number of outputs to generate in parallel per input",
     )
     args = parser.parse_args()
 
@@ -48,11 +47,12 @@ def main():
         torch_dtype=torch.bfloat16,
     )
 
-    function_defs = list_all_function_defs() # this will need to be modified so it's problem-specific
+    function_defs = (
+        list_all_function_defs()
+    )  # this will need to be modified so it's problem-specific
 
     # loop through the problems and get the train problems
     for pid in problem_ids:
-
         # makes a string of input 1: [[]], output 1: [[]] etc
         print("Creating train string")
         arc_problem_train_string = create_train_string(
@@ -73,18 +73,19 @@ def main():
             **input,
             max_new_tokens=args.max_new_tokens,
             num_return_sequences=args.num_return_sequences,
-            temperature=args.temperature
+            temperature=args.temperature,
         )
         outputs_decoded = [
-            tokenizer.decode(seq, skip_special_tokens=True) for seq in outputs_raw
+            tokenizer.decode(seq, skip_special_tokens=True)
+            for seq in outputs_raw
         ]
 
         # save the outputs for now, inspect + decide how to parse / execute
-        savedir = os.path.join(os.environ['HOME'], 'arc', 'outputs', pid)
+        savedir = os.path.join(os.environ["HOME"], "arc", "outputs", pid)
         if not os.path.exists(savedir):
             os.makedirs(savedir)
             for i, output in enumerate(outputs_decoded):
-                with open(os.path.join(savedir, f"gen_{i+1}.txt"), 'w') as f:
+                with open(os.path.join(savedir, f"gen_{i+1}.txt"), "w") as f:
                     f.write(output)
 
         # need to look for any new written functions, somehow decide whether to save

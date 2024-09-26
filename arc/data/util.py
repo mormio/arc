@@ -1,19 +1,7 @@
-import os
-import json
 import importlib
+
 import torch
 from torch.utils.data import random_split
-from arc.functions_library import FUNCTION_CLASSES
-
-
-def load_synthetic_data():
-
-    home_dir = os.environ["HOME"]
-    data_dir = os.path.join(home_dir, "arc", "arc", "data", "synthetic")
-    with open(os.path.join(data_dir, "synthetic_data.json"), "r") as f:
-        synthetic_data = json.load(f)
-
-    return synthetic_data
 
 
 def get_solver(problem, solvers_module=None):
@@ -39,3 +27,8 @@ def split_dataset(dataset, val_split=0.2, seed=0):
     train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
 
     return train_dataset, val_dataset
+
+
+def load_data(dataset="ARC"):
+    # TODO make this load either ARC dataset, REARC dataset, or synthetic dataset..
+    pass

@@ -15,7 +15,12 @@ class ARCResNetClassifier(nn.Module):
 
         # Load a pretrained ResNet
         weights = torch.load(
-            os.path.join(REPO_ROOT, "models", "resnet_rearc_bcelogits.pth")
+            os.path.join(
+                os.path.dirname(REPO_ROOT),
+                "models",
+                "resnet_rearc_bcelogits.pth",
+            ),
+            map_location=torch.device("cpu"),
         )
         self.resnet = models.resnet152(weights=weights)
 

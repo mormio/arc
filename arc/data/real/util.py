@@ -8,7 +8,7 @@ TRAIN_CHALLENGES_PATH = "arc-agi_training_challenges.json"
 TRAIN_SOLUTIONS_PATH = "arc-agi_training_solutions.json"
 
 
-def load_data(split):
+def load_data(split, format_for_dataset=False):
     # assumes data is in the /data folder of this repo
     data_dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -38,7 +38,20 @@ def load_data(split):
         with open(os.path.join(data_dir, solutions_path), "r") as f:
             solutions = json.load(f)
 
+    if format_for_dataset:
+        challenges = format_arc_challenges_for_dataset(challenges)
+
     return challenges, solutions
+
+
+def format_arc_challenges_for_dataset(challenges_data):
+    """Make into format {problem: [{input: [...], output: [...]}, {input: [...], output: [...]}]}
+    Ready for ARCDataset and ARCDataLoader
+    """
+    formatted_dataset = {}
+    pids = list(challenges_data.keys())
+    for pid in pids:
+        formatted_dataset[pid] = challenges_data[pid]["train"]
 
 
 def extract_train_samples(dataset, problem_id):

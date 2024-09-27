@@ -5,41 +5,131 @@ import os
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
+from util import format_arc_challenges_for_dataset, get_solver
 
+from arc import REPO_ROOT
 from arc.arcdsl import PRIMITIVES
 from arc.arcdsl import solvers as solvers_mod
-
-from .util import get_solver
+from arc.data import EASY_SUBSET, load_data
 
 
 class REARCDataset(Dataset):
-    def __init__(self, task_dir, debug=False):
+    def __init__(self, data_dict=None, task_dir=None, debug=False):
         self.data = []
-        problem_names = [x.strip(".json") for x in os.listdir(task_dir)]
-        if debug:
-            problem_names = problem_names[:25]
+
+        if task_dir is None:
+            task_dir = os.path.join(REPO_ROOT, "data", "re_arc", "tasks")
+
+        # if data dict is already loaded and passed, those keys are our problems
+        if data_dict:
+            problem_names = list(data_dict.keys())
+        # otherwise, look in the re_arc/tasks folder for problems
+        else:
+            problem_names = [x.strip(".json") for x in os.listdir(task_dir)]
+            if debug:
+                problem_names = problem_names[:25]
+
         for problem in problem_names:
-            # load synthetic data
-            data_path = os.path.join(task_dir, problem + ".json")
-            with open(data_path, "r") as f:
-                problem_data = json.load(f)
+            if not data_dict:
+                # load synthetic data if it's not provided
+                data_path = os.path.join(task_dir, problem + ".json")
+                with open(data_path, "r") as f:
+                    problem_data = json.load(f)
+            else:
+                # we already have it, get it
+                problem_data = data_dict[problem]
 
             # load the solver
             solver = get_solver(problem, solvers_mod)
-            solver_source = inspect.getsource(solver)
 
-            # check which primitives are in the solver
-            # make it into the label vector
-            label = [0] * len(PRIMITIVES)
-            for i, prim in enumerate(PRIMITIVES):
-                if prim in solver_source:
-                    label[i] = 1
+            # if theres no solver then get_solver() returns None
+            if solver:
+                solver_source = inspect.getsource(solver)
+
+                # check which primitives are in the solver
+                # make it into the label vector
+                label = [0] * len(PRIMITIVES)
+                for i, prim in enumerate(PRIMITIVES):
+                    if prim in solver_source:
+                        label[i] = 1
+            else:
+                label = None
 
             # append all the examples to the training data
             for sample in problem_data:
                 self.data.append(
                     (sample["input"], sample["output"], label, problem)
                 )
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        input_matrix, output_matrix, label_vector, problem_id = self.data[idx]
+        return {
+            "input": input_matrix,
+            "output": output_matrix,
+            "label": np.array(label_vector, dtype=np.float32),
+            "problem_id": problem_id,
+        }
+
+
+class ARCDataset(Dataset):
+    def __init__(
+        self,
+        challenges_data=None,
+        task_dir=None,
+        debug=False,
+        split="train",
+        easy=False,
+    ):
+        self.data = []
+
+        if task_dir is None:
+            task_dir = os.path.join(REPO_ROOT, "data", "re_arc", "tasks")
+
+        # if data dict is already loaded and passed, those keys are our problems
+        if not challenges_data:
+            challenges_data = self.load_challenges_data(
+                split=split, easy=easy, debug=debug
+            )
+
+        problem_names = list(challenges_data.keys())
+
+        for problem in problem_names:
+            problem_data = challenges_data[problem]
+
+            # load the solver
+            solver = get_solver(problem, solvers_mod)
+
+            # if theres no solver then get_solver() returns None
+            if solver:
+                solver_source = inspect.getsource(solver)
+
+                # check which primitives are in the solver
+                # make it into the label vector
+                label = [0] * len(PRIMITIVES)
+                for i, prim in enumerate(PRIMITIVES):
+                    if prim in solver_source:
+                        label[i] = 1
+            else:
+                label = None
+
+            # append all the examples to the training data
+            for sample in problem_data:
+                self.data.append(
+                    (sample["input"], sample["output"], label, problem)
+                )
+
+    def load_challenges_data(self, split, easy, debug):
+        challenges, _ = load_data(dataset="ARC", **{"split": split})
+        if easy:
+            challenges = {
+                k: v for k, v in challenges.items() if k in EASY_SUBSET
+            }
+        if debug:
+            challenges = challenges[:5]
+        return format_arc_challenges_for_dataset(challenges)
 
     def __len__(self):
         return len(self.data)
@@ -62,7 +152,6 @@ class ARCDataLoader(DataLoader):
         shuffle=False,
         num_workers=0,
         normalize=True,
-        channels=1,
     ):
         super().__init__(
             dataset,
@@ -72,7 +161,6 @@ class ARCDataLoader(DataLoader):
             collate_fn=self.arc_collate_fn,
         )
         self.normalize = normalize
-        self.channels = channels
 
     @staticmethod
     def pad_matrix(matrix, max_height, max_width):

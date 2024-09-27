@@ -25,51 +25,7 @@ MODELS = {"llama-3.1-8b-instruct": "meta-llama/Meta-Llama-3.1-8B-Instruct"}
 
 def main():
     # args
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--debug", action="store_true")
-    parser.add_argument("--dataset", type=str, help="ARC, REARC, or synthetic")
-    parser.add_argument("--llm", type=str, default="llama-3.1-8b-instruct")
-    parser.add_argument(
-        "--split", type=str, default="train", help="Data split."
-    )
-    parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument(
-        "--max_new_tokens", type=int, default=600, help="For llm sampling."
-    )
-    parser.add_argument(
-        "--temperature", type=float, default=0.3, help="For LLM sampling."
-    )
-    parser.add_argument(
-        "--num_return_sequences",
-        type=int,
-        default=64,
-        help="Number of samples per prompt in the LLM.",
-    )
-    parser.add_argument(
-        "--easy", action="store_true", help="Only do the easy ARC subset."
-    )
-    parser.add_argument(
-        "--resnet_thresh",
-        type=float,
-        default=0.5,
-        help="Threshold for sigmoid on resnet outputs",
-    )
-    parser.add_argument(
-        "--pred_aggregation",
-        default="any",
-        help="any or or, to aggregate predictions over a single problem's samples",
-    )
-    args = parser.parse_args()
-
-    assert args.llm in MODELS.keys(), f"llm arg must be one of {MODELS.keys()}"
-    assert args.pred_aggregation in [
-        "any",
-        "all",
-    ], "pred aggregation arg must be one of any (or) or all (and)"
-    if args.pred_aggregation == "any":
-        args.pred_aggregation == any
-    elif args.pred_aggregation == "all":
-        args.pred_aggregation == all
+    args = get_arguments()
 
     # load resnet
     resnet = ARCResNetClassifier(len(PRIMITIVES)).to(DEVICE)
@@ -201,6 +157,56 @@ def forward_pass_resnet(resnet, dataloader, device, thresh=0.5):
             preds[pid].extend(pred)
 
     return preds
+
+
+def get_arguments():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--debug", action="store_true")
+    parser.add_argument("--dataset", type=str, help="ARC, REARC, or synthetic")
+    parser.add_argument("--llm", type=str, default="llama-3.1-8b-instruct")
+    parser.add_argument(
+        "--split", type=str, default="train", help="Data split."
+    )
+    parser.add_argument("--batch_size", type=int, default=32)
+    parser.add_argument(
+        "--max_new_tokens", type=int, default=600, help="For llm sampling."
+    )
+    parser.add_argument(
+        "--temperature", type=float, default=0.3, help="For LLM sampling."
+    )
+    parser.add_argument(
+        "--num_return_sequences",
+        type=int,
+        default=64,
+        help="Number of samples per prompt in the LLM.",
+    )
+    parser.add_argument(
+        "--easy", action="store_true", help="Only do the easy ARC subset."
+    )
+    parser.add_argument(
+        "--resnet_thresh",
+        type=float,
+        default=0.5,
+        help="Threshold for sigmoid on resnet outputs",
+    )
+    parser.add_argument(
+        "--pred_aggregation",
+        default="any",
+        help="any or or, to aggregate predictions over a single problem's samples",
+    )
+    args = parser.parse_args()
+
+    assert args.llm in MODELS.keys(), f"llm arg must be one of {MODELS.keys()}"
+    assert args.pred_aggregation in [
+        "any",
+        "all",
+    ], "pred aggregation arg must be one of any (or) or all (and)"
+    if args.pred_aggregation == "any":
+        args.pred_aggregation == any
+    elif args.pred_aggregation == "all":
+        args.pred_aggregation == all
+
+    return args
 
 
 if __name__ == "__main__":

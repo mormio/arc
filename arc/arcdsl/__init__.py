@@ -1,4 +1,5 @@
 from .dsl import *
+from .util import get_def_and_docstring 
 
 PRIMITIVES = [
     "add",

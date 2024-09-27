@@ -5,12 +5,14 @@ import os
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
-from util import format_arc_challenges_for_dataset, get_solver
 
 from arc import REPO_ROOT
 from arc.arcdsl import PRIMITIVES
 from arc.arcdsl import solvers as solvers_mod
-from arc.data import EASY_SUBSET, load_data
+
+from .easy_subset import EASY_SUBSET
+from .real.util import format_arc_challenges_for_dataset
+from .util import get_solver, load_data
 
 
 class REARCDataset(Dataset):

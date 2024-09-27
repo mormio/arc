@@ -1,9 +1,10 @@
 import importlib
 
 import torch
-from re_arc.util import load_data as load_rearc_dataset
-from real.util import load_data as load_arc_dataset
 from torch.utils.data import random_split
+
+from .re_arc.util import load_data as load_rearc_dataset
+from .real.util import load_data as load_arc_dataset
 
 
 def get_solver(problem, solvers_module=None):

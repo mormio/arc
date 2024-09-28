@@ -53,6 +53,8 @@ def format_arc_challenges_for_dataset(challenges_data):
     for pid in pids:
         formatted_dataset[pid] = challenges_data[pid]["train"]
 
+    return formatted_dataset
+
 
 def extract_train_samples(dataset, problem_id):
     return dataset[problem_id]["train"]

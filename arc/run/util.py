@@ -39,7 +39,7 @@ def make_prompt_with_recommendations(
 
     Propose a solution to transform the problem's input into the output.
     Be specific about which functions you use and how you combine them. You do not need to import.
-    Your solution should be a python function wrapped in ```.
+    Your solution should be a python function wrapped in ``` and shout return a List[List[int]].
 
     Your solution:
     """
@@ -55,13 +55,13 @@ def filter_by_binary(items, binary_filter):
     return [item for item, keep in zip(items, binary_filter) if keep]
 
 
-def aggregate_problem_predictions(preds, method=any):
+def aggregate_problem_predictions(preds, method=all):
     """Aggregates across all the predictions for the examples belonging to a single problem."""
 
     assert method in [any, all], "aggregation must be either any or or"
     for pid, pred_list in preds.items():
         agg = [
-            method(row[i] for row in pred_list)
+            int(method(row[i] for row in pred_list))
             for i in range(len(pred_list[0]))
         ]
         preds[pid] = agg

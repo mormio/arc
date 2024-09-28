@@ -1,7 +1,11 @@
 import importlib
+import inspect
 
 import torch
 from torch.utils.data import random_split
+
+from arc.arcdsl import PRIMITIVES
+from arc.arcdsl import solvers as solvers_mod
 
 from .re_arc.util import load_data as load_rearc_dataset
 from .real.util import load_data as load_arc_dataset
@@ -18,6 +22,27 @@ def get_solver(problem, solvers_module=None):
         return None
 
     return solver_function
+
+
+def get_primitives_vector_for_problem(problem_id, mod=None):
+    if not mod:
+        mod = solvers_mod
+
+    solver = get_solver(problem_id, mod)
+    # if theres no solver then get_solver() returns None
+    if solver:
+        solver_source = inspect.getsource(solver)
+
+        # check which primitives are in the solver
+        # make it into the label vector
+        label = [0] * len(PRIMITIVES)
+        for i, prim in enumerate(PRIMITIVES):
+            if prim in solver_source:
+                label[i] = 1
+    else:
+        label = None
+
+    return label
 
 
 def split_dataset(dataset, val_split=0.2, seed=0):

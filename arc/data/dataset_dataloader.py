@@ -12,7 +12,7 @@ from arc.arcdsl import solvers as solvers_mod
 
 from .easy_subset import EASY_SUBSET
 from .real.util import format_arc_challenges_for_dataset
-from .util import get_solver, load_data
+from .util import get_primitives_vector_for_problem, get_solver, load_data
 
 
 class REARCDataset(Dataset):
@@ -41,21 +41,8 @@ class REARCDataset(Dataset):
                 # we already have it, get it
                 problem_data = data_dict[problem]
 
-            # load the solver
-            solver = get_solver(problem, solvers_mod)
-
-            # if theres no solver then get_solver() returns None
-            if solver:
-                solver_source = inspect.getsource(solver)
-
-                # check which primitives are in the solver
-                # make it into the label vector
-                label = [0] * len(PRIMITIVES)
-                for i, prim in enumerate(PRIMITIVES):
-                    if prim in solver_source:
-                        label[i] = 1
-            else:
-                label = None
+            # Get the 1/0 vector for primitives in the solver
+            label = get_primitives_vector_for_problem(problem, solvers_mod)
 
             # append all the examples to the training data
             for sample in problem_data:
@@ -130,7 +117,8 @@ class ARCDataset(Dataset):
                 k: v for k, v in challenges.items() if k in EASY_SUBSET
             }
         if debug:
-            challenges = challenges[:5]
+            challenges = dict(list(challenges.items())[:5])
+
         return format_arc_challenges_for_dataset(challenges)
 
     def __len__(self):

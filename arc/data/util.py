@@ -1,3 +1,4 @@
+import ast
 import importlib
 import inspect
 
@@ -70,3 +71,35 @@ def load_data(dataset="ARC", **kwargs):
     # TODO: elif dataset == "synthetic"
 
     return data
+
+
+def string_grid_to_ascii_art(grid: str):
+    """Turn a string from the ARC dataset, representing a grid, into ascii."""
+
+    def _string_to_list_of_lists(s):
+        try:
+            # Use ast.literal_eval to safely evaluate the string as a Python literal
+            return ast.literal_eval(s)
+        except (SyntaxError, ValueError):
+            raise ValueError(
+                "Invalid input string. Must be a valid representation of a list of lists."
+            )
+
+    # turn into bona fide python list of lists
+    try:
+        grid = _string_to_list_of_lists(grid)
+    except ValueError as e:
+        print(e)
+        return None
+
+    # Define a mapping of numbers to ASCII characters
+    ascii_chars = " .:-=+*#%@"
+
+    # Convert each number to its corresponding ASCII character
+    ascii_art = []
+    for row in grid:
+        ascii_row = "".join(ascii_chars[num] for num in row)
+        ascii_art.append(ascii_row)
+
+    # Join the rows and return the result
+    return "\n".join(ascii_art)

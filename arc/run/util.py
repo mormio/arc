@@ -38,7 +38,8 @@ def make_prompt_with_recommendations(
     {"".join(primitives_shortlist)}
 
     Propose a solution to transform the problem's input into the output.
-    Be specific about which functions you use and how you combine them. You do not need to import.
+    Be specific about which functions you use and how you combine them. Assume the provided functions
+    and typing * are imported.
     Your solution should be a python function wrapped in ``` and shout return a List[List[int]].
 
     Your solution:

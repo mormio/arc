@@ -19,13 +19,13 @@ from arc.data import (
     get_primitives_vector_for_problem,
     load_data,
 )
-from arc.eval import evaluate_output, extract_solution_from_llm_output
+from arc.eval import eval_all_files_in_folder, extract_solution_from_llm_output
 from arc.run import (
     aggregate_problem_predictions,
     filter_by_binary,
     make_prompt_with_recommendations,
 )
-from arc.run.models import ARCResNetClassifier
+from arc.run.resnet import ARCResNetClassifier
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 MODELS = {"llama-3.1-8b-instruct": "meta-llama/Meta-Llama-3.1-8B-Instruct"}
@@ -84,7 +84,6 @@ def main():
         k: v for k, v in train_problems.items() if k in problem_ids
     }
 
-    # load llm and tokenizer
     model_name = MODELS.get(args.llm)
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     tokenizer.pad_token_id = tokenizer.bos_token_id
@@ -101,15 +100,14 @@ def main():
         args,
         preds,
         train_problems,
+        DEVICE,
     )
 
     print("LLM forward passes complete. Starting evaluations for problems.")
+
     # evaluate
-    assert (
-        len(os.listdir(llm_results_savedir)) == len(train_problems) + 1
-    )  # +1 for the evaluations file
-    eval_results = eval_llm_attempts(
-        llm_results_savedir, train_problems, train_sols, problem_ids
+    eval_results = eval_all_files_in_folder(
+        llm_results_savedir, train_problems, train_sols, False
     )
     # save eval
     eval_path = os.path.join(llm_results_savedir, "evaluations.json")
@@ -118,7 +116,7 @@ def main():
     print(f"Saving evaluation results to: {eval_path}")
 
     # analyse number of primitives recommended vs used
-    analysis_results = analyze_prompt_usage(llm_results_savedir, problem_ids)
+    analysis_results = analyze_prompt_usage(llm_results_savedir)
     # save analysis
     analysis_path = os.path.join(llm_results_savedir, "analysis.json")
     with open(analysis_path, "w") as f:
@@ -128,16 +126,20 @@ def main():
     # ========================== FINISHED ==========================
 
 
-def analyze_prompt_usage(path2results, problem_ids):
+def analyze_prompt_usage(path2results):
     analysis = defaultdict(dict)
 
-    for problem in problem_ids:
-        full_path = os.path.join(path2results, problem + ".json")
-        with open(full_path, "r") as f:
-            problem_data = json.load(f)
+    for results_file in os.listdir(path2results):
+        with open(os.path.join(path2results, results_file), "r") as f:
+            llm_submission = json.load(f)
+
+        if "generations" not in llm_submission:
+            continue  # making sure we are in the good type of file
+
+        problem_id = results_file.strip(".json")
 
         # find the primitives that would have been recommended in the prompt
-        recommended_primitives_vector = problem_data[
+        recommended_primitives_vector = llm_submission[
             "recommended_primitives_vector"
         ]
         recommended_primitives = filter_by_binary(
@@ -147,7 +149,7 @@ def analyze_prompt_usage(path2results, problem_ids):
         # loop through saved llm attempts
         n_primitives_used = []
         intersection = []
-        for attempt in problem_data["generations"]:
+        for attempt in llm_submission["generations"]:
             clean_function = extract_solution_from_llm_output(attempt)
             # check how many primitives from the dsl are used
             n_primitives_used.append(
@@ -166,46 +168,13 @@ def analyze_prompt_usage(path2results, problem_ids):
             )
 
         # store before moving onto next problem
-        analysis["n_primitives_recommended"][problem] = len(
+        analysis["n_primitives_recommended"][problem_id] = len(
             recommended_primitives
         )
-        analysis["n_primitives_used"][problem] = n_primitives_used
-        analysis["intersection"][problem] = intersection
+        analysis["n_primitives_used"][problem_id] = n_primitives_used
+        analysis["intersection"][problem_id] = intersection
 
     return analysis
-
-
-def eval_llm_attempts(path2results, challenges, solutions, problem_ids):
-    problems_solved = [0] * len(problem_ids)
-    problems_partially_solved = [0] * len(problem_ids)
-    total_out_of = 0
-    total_correct = 0
-
-    for i, problem in enumerate(problem_ids):
-        with open(os.path.join(path2results, problem + ".json"), "r") as f:
-            problem_data = json.load(f)
-
-        # evaluate
-        for hypothesis in problem_data["generations"]:
-            correct, out_of = evaluate_output(
-                raw_output=hypothesis,
-                challenges=challenges,
-                solutions=solutions,
-                problem_id=problem,
-            )
-            if correct == out_of:
-                problems_solved[i] = 1
-            if correct > 0 and correct < out_of:
-                problems_partially_solved[i] = 1
-            total_out_of += out_of
-            total_correct += correct
-
-    return {
-        "problems_solved": problems_solved,
-        "problems_partially_solved": problems_partially_solved,
-        "total_out_of": total_out_of,
-        "total_correct": total_correct,
-    }
 
 
 def forward_pass_llm(
@@ -214,16 +183,20 @@ def forward_pass_llm(
     args,
     resnet_preds,
     train_problems,
+    device,
     savedir=None,
 ):
     print(f"There are {len(train_problems)} problems.")
 
     llm.eval()
+    llm.gradient_checkpointing_enable()
+
     for problem_id in tqdm(
         list(train_problems.keys()), desc="Problems in LLM"
     ):
         torch.cuda.empty_cache()
-        # get the problem id
+
+        # ground truth primitives if available
         gt_primitives_label = get_primitives_vector_for_problem(
             problem_id, solvers_mod
         )
@@ -238,11 +211,6 @@ def forward_pass_llm(
             PRIMITIVES, resnet_preds[problem_id]
         )
 
-        print(
-            f"""For problem {problem_id} the primitives shortlist is
-            {primitives_shortlist} and the actual primitives are {gt_primitives}. """
-        )
-
         # get source code for recommended primitives
         primitives_shortlist = [
             inspect.getsource(getattr(dsl_mod, p)) + "\n\n"
@@ -253,7 +221,7 @@ def forward_pass_llm(
             )
         ]
 
-        # Make the prompt
+        # Make the prompt using those source codes
         problem_train_string = create_train_string(
             dataset=train_problems, problem_id=problem_id
         )
@@ -261,8 +229,9 @@ def forward_pass_llm(
             problem_train_string, primitives_shortlist
         )
 
-        # sample
-        input = tokenizer(prompt, return_tensors="pt").to("cuda")
+        # sample from LLM
+        input = tokenizer(prompt, return_tensors="pt").to(device)
+
         with torch.no_grad():
             outputs_raw = llm.generate(
                 **input,
@@ -270,16 +239,19 @@ def forward_pass_llm(
                 num_return_sequences=args.num_return_sequences,
                 temperature=args.temperature,
             )
+
         outputs_decoded = [
             tokenizer.decode(seq, skip_special_tokens=True)
             for seq in outputs_raw
         ]
 
         # memory management
-        for ob in (outputs_raw, input):
-            ob.cpu()
-            del ob
+        outputs_raw = outputs_raw.cpu()
+        del outputs_raw
+        input = {k: v.cpu() for k, v in input.items()}
+        del input
 
+        # save
         save_results = {
             "generations": outputs_decoded,
             "recommended_primitives_vector": gt_primitives_label
@@ -289,7 +261,9 @@ def forward_pass_llm(
 
         # save the outputs for now, inspect + decide how to parse / execute
         if savedir is None:
-            savedir = os.path.join(os.environ["HOME"], "arc", "outputs")
+            savedir = os.path.join(
+                os.environ["HOME"], "arc", "outputs", args.llm
+            )
         if not os.path.exists(savedir):
             os.makedirs(savedir)
         problem_savedir = os.path.join(savedir, problem_id + ".json")

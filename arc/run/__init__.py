@@ -1,4 +1,4 @@
-from .models import ARCResNetClassifier
+from .resnet import ARCResNetClassifier
 from .util import (
     aggregate_problem_predictions,
     filter_by_binary,

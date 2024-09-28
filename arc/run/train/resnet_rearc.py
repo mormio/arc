@@ -17,7 +17,7 @@ from tqdm import tqdm
 from arc import REPO_ROOT
 from arc.arcdsl import PRIMITIVES
 from arc.data import ARCDataLoader, REARCDataset, split_dataset
-from arc.run.models import ARCResNetClassifier
+from arc.run.resnet import ARCResNetClassifier
 
 
 class WeightedBinaryCrossEntropyLoss(nn.Module):

@@ -134,10 +134,10 @@ def analyze_prompt_usage(path2results, problem_ids):
     for problem in problem_ids:
         full_path = os.path.join(path2results, problem + ".json")
         with open(full_path, "r") as f:
-            attempts = json.load(f)
+            problem_data = json.load(f)
 
         # find the primitives that would have been recommended in the prompt
-        recommended_primitives_vector = attempts[
+        recommended_primitives_vector = problem_data[
             "recommended_primitives_vector"
         ]
         recommended_primitives = filter_by_binary(
@@ -147,9 +147,7 @@ def analyze_prompt_usage(path2results, problem_ids):
         # loop through saved llm attempts
         n_primitives_used = []
         intersection = []
-        for key, attempt in attempts.items():
-            if key == "recommended_primitives_vector":
-                continue
+        for attempt in problem_data["generations"]:
             clean_function = extract_solution_from_llm_output(attempt)
             # check how many primitives from the dsl are used
             n_primitives_used.append(
@@ -185,12 +183,10 @@ def eval_llm_attempts(path2results, challenges, solutions, problem_ids):
 
     for i, problem in enumerate(problem_ids):
         with open(os.path.join(path2results, problem + ".json"), "r") as f:
-            problem_hypotheses = json.load(f)
+            problem_data = json.load(f)
 
         # evaluate
-        for key, hypothesis in problem_hypotheses.items():
-            if key == "recommended_primitives_vector":
-                continue
+        for hypothesis in problem_data["generations"]:
             correct, out_of = evaluate_output(
                 raw_output=hypothesis,
                 challenges=challenges,
@@ -267,23 +263,29 @@ def forward_pass_llm(
 
         # sample
         input = tokenizer(prompt, return_tensors="pt").to("cuda")
-        outputs_raw = llm.generate(
-            **input,
-            max_new_tokens=args.max_new_tokens,
-            num_return_sequences=args.num_return_sequences,
-            temperature=args.temperature,
-        )
+        with torch.no_grad():
+            outputs_raw = llm.generate(
+                **input,
+                max_new_tokens=args.max_new_tokens,
+                num_return_sequences=args.num_return_sequences,
+                temperature=args.temperature,
+            )
         outputs_decoded = [
             tokenizer.decode(seq, skip_special_tokens=True)
             for seq in outputs_raw
         ]
 
-        save_results = {x: out for x, out in enumerate(outputs_decoded)}
-        save_results["recommended_primitives_vector"] = (
-            gt_primitives_label
+        # memory management
+        for ob in (outputs_raw, input):
+            ob.cpu()
+            del ob
+
+        save_results = {
+            "generations": outputs_decoded,
+            "recommended_primitives_vector": gt_primitives_label
             if args.recommend_gt_primitives
-            else resnet_preds[problem_id]
-        )
+            else resnet_preds[problem_id],
+        }
 
         # save the outputs for now, inspect + decide how to parse / execute
         if savedir is None:

@@ -4,8 +4,15 @@ import os
 from abc import ABC
 from typing import List
 
+import openai
 import torch
 from openai import AzureOpenAI
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 
 LLM_MODELS = {
@@ -13,6 +20,20 @@ LLM_MODELS = {
     "gpt-4o": "gpt-4o",
     "gpt-4o-gs": "gpt-4o-gs",
 }
+
+
+def _retry_request(min_wait=4, max_wait=10, max_attempts=100):
+    return retry(
+        reraise=True,
+        stop=stop_after_attempt(max_attempts),
+        wait=wait_exponential(multiplier=1, min=min_wait, max=max_wait),
+        retry=(
+            retry_if_exception_type(openai.Timeout)
+            | retry_if_exception_type(openai.APIError)
+            | retry_if_exception_type(openai.APIConnectionError)
+            | retry_if_exception_type(openai.RateLimitError)
+        ),
+    )
 
 
 class LLM(ABC):
@@ -76,6 +97,7 @@ class ARCAzureOpenAI(AzureOpenAI):
         token_estimate += 2
         return token_estimate
 
+    @_retry_request(min_wait=4, max_wait=10, max_attempts=500)
     def generate(
         self,
         messages: List[dict],

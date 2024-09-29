@@ -90,7 +90,7 @@ def main():
     llm = LLM(model_name=args.llm)
 
     print("Starting LLM forward pass...")
-    llm_results_savedir = forward_pass_llm(
+    llm_results_save_dir = forward_pass_llm(
         llm,
         args,
         preds,
@@ -103,18 +103,18 @@ def main():
 
     # evaluate
     eval_results = eval_all_files_in_folder(
-        llm_results_savedir, train_problems, train_sols, False
+        llm_results_save_dir, train_problems, train_sols, False
     )
     # save eval
-    eval_path = os.path.join(llm_results_savedir, "evaluations.json")
+    eval_path = os.path.join(llm_results_save_dir, "evaluations.json")
     with open(eval_path, "w") as f:
         json.dump(eval_results, f, indent=4)
     print(f"Saving evaluation results to: {eval_path}")
 
     # analyse number of primitives recommended vs used
-    analysis_results = analyze_prompt_usage(llm_results_savedir)
+    analysis_results = analyze_prompt_usage(llm_results_save_dir)
     # save analysis
-    analysis_path = os.path.join(llm_results_savedir, "analysis.json")
+    analysis_path = os.path.join(llm_results_save_dir, "analysis.json")
     with open(analysis_path, "w") as f:
         json.dump(analysis_results, f, indent=4)
     print(f"Saving analysis results to: {analysis_path}")
@@ -250,17 +250,19 @@ def forward_pass_llm(
         }
 
         # save the outputs
-        if args.savedir is None:
-            savedir = os.path.join(
+        if args.save_dir is None:
+            save_dir = os.path.join(
                 os.environ["HOME"], "arc", "outputs", args.llm
             )
-        if not os.path.exists(savedir):
-            os.makedirs(savedir)
-        problem_savedir = os.path.join(savedir, problem_id + ".json")
-        with open(problem_savedir, "w") as f:
+        else:
+            save_dir = args.save_dir
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+        problem_save_dir = os.path.join(save_dir, problem_id + ".json")
+        with open(problem_save_dir, "w") as f:
             json.dump(save_results, f)
 
-    return savedir
+    return save_dir
 
 
 def forward_pass_resnet(resnet, dataloader, device, thresh=0.5):
@@ -336,14 +338,14 @@ def get_arguments():
         help="any or or, to aggregate predictions over a single problem's samples",
     )
     parser.add_argument(
-        "--savedir",
+        "--save_dir",
         type=str,
         help="Where to save llm generations, evaluations, and analysis",
     )
     parser.add_argument(
         "--exp",
         type=str,
-        help="Optional string used by runner.py for making savedir",
+        help="Optional string used by runner.py for making save_dir",
     )
     args = parser.parse_args()
 

@@ -5,6 +5,7 @@ import json
 import os
 from collections import defaultdict
 
+import numpy as np
 import torch
 from tqdm import tqdm
 
@@ -17,7 +18,7 @@ from arc.data import (
     get_primitives_vector_for_problem,
     load_data,
 )
-from arc.eval import eval_all_files_in_folder, extract_solution_from_llm_output
+from arc.eval import eval_all_files_in_folder
 from arc.run import (
     LLM,
     LLM_MODELS,
@@ -122,14 +123,14 @@ def main():
     # ========================== FINISHED ==========================
 
 
-def analyze_prompt_usage(path2results):
+def analyze_prompt_usage(path2results: str) -> dict:
     analysis = defaultdict(dict)
 
     for results_file in os.listdir(path2results):
         with open(os.path.join(path2results, results_file), "r") as f:
             llm_submission = json.load(f)
 
-        if "generations" not in llm_submission:
+        if "raw_generations" not in list(llm_submission.keys()):
             continue  # making sure we are in the good type of file
 
         problem_id = results_file.strip(".json")
@@ -145,23 +146,25 @@ def analyze_prompt_usage(path2results):
         # loop through saved llm attempts
         n_primitives_used = []
         intersection = []
-        for attempt in llm_submission["generations"]:
-            clean_function = extract_solution_from_llm_output(attempt)
-            # check how many primitives from the dsl are used
-            n_primitives_used.append(
-                len([x for x in PRIMITIVES if x in clean_function])
-            )
-            # check how many of these were also recommended
-            intersection.append(
-                len(
-                    [
-                        x
-                        for x in PRIMITIVES
-                        if (x in clean_function)
-                        and (x in recommended_primitives)
-                    ]
+        for attempt in llm_submission["hypotheses"]:
+            if attempt is not None:
+                # check how many primitives from the dsl are used
+                n_primitives_used.append(
+                    len([x for x in PRIMITIVES if x in attempt])
                 )
-            )
+                # check how many of these were also recommended
+                intersection.append(
+                    len(
+                        [
+                            x
+                            for x in PRIMITIVES
+                            if (x in attempt) and (x in recommended_primitives)
+                        ]
+                    )
+                )
+            else:
+                n_primitives_used.append(np.nan)
+                intersection.append(np.nan)
 
         # store before moving onto next problem
         analysis["n_primitives_recommended"][problem_id] = len(

@@ -6,11 +6,16 @@ arc/nbs/*
 *.egg-info
 *.pyc
 *.json
+*.ipynb
 arc/data/synthetic/generate_proto.ipynb
 .neptune/*
 .arc-dsl/*
-.re-arc/*
+arc/run/tuning/*
 arc/data/rearc/*
 *.err
 *.out
 *proto.ipynb
+runner.py 
+runner_util.py
+models/*
+re-arc/

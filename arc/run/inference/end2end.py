@@ -95,7 +95,6 @@ def main():
         args,
         preds,
         train_problems,
-        DEVICE,
     )
 
     print(

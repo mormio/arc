@@ -1,51 +1,20 @@
-def writing_llm_prompt(arc_problem_train_string, function_defs):
-    prompt = f"""
-    You are tasked wiht solving abstract reasoning problems.
-    You have access to a library of functions to help you solve these problems.
-    Your task is to propose a solution using these functions and any other new
-    functions you can choose to write. You may not need to use any of the functions
-    in the provided library.
-
-    Problem:
-    {arc_problem_train_string}
-
-    Available functions:
-    {"".join(function_defs)}
-
-    Propose a solution to transform the input into the output.
-    Be specific about which functions you use and how you combine them. You do not need to
-    import. Your solution should be a python function wrapped in ```.
-
-    Your solution:
-    """
-
-    return prompt
+import re
 
 
-def make_prompt_with_recommendations(
-    arc_problem_train_string, primitives_shortlist
-):
-    prompt = f"""
-    You are tasked wiht solving abstract reasoning problems. Your helper has recommended
-    a selection of primitive functions to help you solve a particular problem. You must
-    propose a solution using these functions and any other novel functions you may choose to write.
-    You may not need to use all or any of the recommended functions.
+def extract_reasoning_from_text(text):
+    pattern = r"<reasoning>(.*?)</reasoning>"
+    match = re.search(pattern, text, re.DOTALL)
+    if match:
+        return match.group(1).strip()
+    return None
 
-    Problem:
-    {arc_problem_train_string}
 
-    Recommended function primitives:
-    {"".join(primitives_shortlist)}
-
-    Propose a solution to transform the problem's input into the output.
-    Be specific about which functions you use and how you combine them. Assume the provided functions
-    and typing * are imported.
-    Your solution should be a python function wrapped in ``` and shout return a List[List[int]].
-
-    Your solution:
-    """
-
-    return prompt
+def extract_code_from_text(text):
+    pattern = r"```(.*?)```"
+    match = re.search(pattern, text, re.DOTALL)
+    if match:
+        return match.group(1).strip()
+    return None
 
 
 def filter_by_binary(items, binary_filter):

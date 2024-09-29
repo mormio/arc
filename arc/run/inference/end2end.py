@@ -7,7 +7,6 @@ from collections import defaultdict
 
 import torch
 from tqdm import tqdm
-from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from arc.arcdsl import PRIMITIVES
 from arc.arcdsl import dsl as dsl_mod
@@ -15,20 +14,22 @@ from arc.arcdsl import solvers as solvers_mod
 from arc.data import (
     ARCDataLoader,
     ARCDataset,
-    create_train_string,
     get_primitives_vector_for_problem,
     load_data,
 )
 from arc.eval import eval_all_files_in_folder, extract_solution_from_llm_output
 from arc.run import (
+    LLM,
+    LLM_MODELS,
     aggregate_problem_predictions,
+    extract_code_from_text,
+    extract_reasoning_from_text,
     filter_by_binary,
-    make_prompt_with_recommendations,
 )
+from arc.run.prompting import make_system_prompt, make_user_prompt
 from arc.run.resnet import ARCResNetClassifier
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-MODELS = {"llama-3.1-8b-instruct": "meta-llama/Meta-Llama-3.1-8B-Instruct"}
 
 
 def main():
@@ -84,26 +85,22 @@ def main():
         k: v for k, v in train_problems.items() if k in problem_ids
     }
 
-    model_name = MODELS.get(args.llm)
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    tokenizer.pad_token_id = tokenizer.bos_token_id
-    llm = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        device_map="auto",
-        torch_dtype=torch.bfloat16,
-    )
+    # prep llm
+    print("Loading LLM.")
+    llm = LLM(model_name=args.llm)
 
     print("Starting LLM forward pass...")
     llm_results_savedir = forward_pass_llm(
         llm,
-        tokenizer,
         args,
         preds,
         train_problems,
         DEVICE,
     )
 
-    print("LLM forward passes complete. Starting evaluations for problems.")
+    print(
+        "LLM forward passes complete. Starting evaluations and analysis for problems."
+    )
 
     # evaluate
     eval_results = eval_all_files_in_folder(
@@ -179,17 +176,11 @@ def analyze_prompt_usage(path2results):
 
 def forward_pass_llm(
     llm,
-    tokenizer,
     args,
     resnet_preds,
     train_problems,
-    device,
-    savedir=None,
 ):
-    print(f"There are {len(train_problems)} problems.")
-
-    llm.eval()
-    llm.gradient_checkpointing_enable()
+    print(f"Starting to generate answers for {len(train_problems)} problems.")
 
     for problem_id in tqdm(
         list(train_problems.keys()), desc="Problems in LLM"
@@ -221,46 +212,46 @@ def forward_pass_llm(
             )
         ]
 
-        # Make the prompt using those source codes
-        problem_train_string = create_train_string(
-            dataset=train_problems, problem_id=problem_id
+        # make system and user prompts
+        system_prompt = make_system_prompt()
+        user_prompt = make_user_prompt(
+            train_problems[problem_id]["train"],
+            args.llm,
+            primitives_shortlist,
         )
-        prompt = make_prompt_with_recommendations(
-            problem_train_string, primitives_shortlist
-        )
 
-        # sample from LLM
-        input = tokenizer(prompt, return_tensors="pt").to(device)
-
-        with torch.no_grad():
-            outputs_raw = llm.generate(
-                **input,
-                max_new_tokens=args.max_new_tokens,
-                num_return_sequences=args.num_return_sequences,
-                temperature=args.temperature,
-            )
-
-        outputs_decoded = [
-            tokenizer.decode(seq, skip_special_tokens=True)
-            for seq in outputs_raw
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
         ]
 
-        # memory management
-        outputs_raw = outputs_raw.cpu()
-        del outputs_raw
-        input = {k: v.cpu() for k, v in input.items()}
-        del input
+        # forward pass
+        outputs_decoded = llm.generate(
+            messages=messages,
+            max_new_tokens=args.max_new_tokens,
+            num_return_sequences=args.num_return_sequences,
+            temperature=args.temperature,
+            return_list_of_strings=True,
+        )
+
+        # extract reasoning
+        reasoning = [extract_reasoning_from_text(t) for t in outputs_decoded]
+        hypotheses = [extract_code_from_text(t) for t in outputs_decoded]
 
         # save
         save_results = {
-            "generations": outputs_decoded,
-            "recommended_primitives_vector": gt_primitives_label
-            if args.recommend_gt_primitives
-            else resnet_preds[problem_id],
+            "raw_generations": outputs_decoded,
+            "reasoning": reasoning,
+            "hypotheses": hypotheses,
+            "recommended_primitives_vector": (
+                gt_primitives_label
+                if args.recommend_gt_primitives
+                else resnet_preds[problem_id]
+            ),
         }
 
-        # save the outputs for now, inspect + decide how to parse / execute
-        if savedir is None:
+        # save the outputs
+        if args.savedir is None:
             savedir = os.path.join(
                 os.environ["HOME"], "arc", "outputs", args.llm
             )
@@ -296,7 +287,10 @@ def get_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument("--debug", action="store_true")
     parser.add_argument(
-        "--dataset", type=str, default="ARC", help="ARC, REARC, or synthetic"
+        "--dataset",
+        type=str,
+        default="ARC",
+        help="ARC, REARC, or synthetic",
     )
     parser.add_argument("--llm", type=str, default="llama-3.1-8b-instruct")
     parser.add_argument(
@@ -304,10 +298,16 @@ def get_arguments():
     )
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument(
-        "--max_new_tokens", type=int, default=300, help="For llm sampling."
+        "--max_new_tokens",
+        type=int,
+        default=300,
+        help="For llm sampling.",
     )
     parser.add_argument(
-        "--temperature", type=float, default=0.3, help="For LLM sampling."
+        "--temperature",
+        type=float,
+        default=0.3,
+        help="For LLM sampling.",
     )
     parser.add_argument(
         "--num_return_sequences",
@@ -316,7 +316,9 @@ def get_arguments():
         help="Number of samples per prompt in the LLM.",
     )
     parser.add_argument(
-        "--easy", action="store_true", help="Only do the easy ARC subset."
+        "--easy",
+        action="store_true",
+        help="Only do the easy ARC subset.",
     )
     parser.add_argument(
         "--resnet_thresh",
@@ -334,9 +336,16 @@ def get_arguments():
         default="all",
         help="any or or, to aggregate predictions over a single problem's samples",
     )
+    parser.add_argument(
+        "--savedir",
+        type=str,
+        help="Where to save llm generations, evaluations, and analysis",
+    )
     args = parser.parse_args()
 
-    assert args.llm in MODELS.keys(), f"llm arg must be one of {MODELS.keys()}"
+    assert (
+        args.llm in LLM_MODELS.keys()
+    ), f"llm arg must be one of {LLM_MODELS.keys()}"
     assert args.pred_aggregation in [
         "any",
         "all",

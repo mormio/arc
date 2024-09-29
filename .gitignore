@@ -13,4 +13,4 @@ arc/data/synthetic/generate_proto.ipynb
 arc/data/rearc/*
 *.err
 *.out
-*/proto.ipynb
+*proto.ipynb

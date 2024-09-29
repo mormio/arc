@@ -340,6 +340,11 @@ def get_arguments():
         type=str,
         help="Where to save llm generations, evaluations, and analysis",
     )
+    parser.add_argument(
+        "--exp",
+        type=str,
+        help="Optional string used by runner.py for making savedir",
+    )
     args = parser.parse_args()
 
     assert (

@@ -56,6 +56,7 @@ def main():
         num_workers=min(4, os.cpu_count()),
         normalize=True,
     )
+
     problem_ids = [x[-1] for x in dataset.data]
     print(
         "Dataset and dataloader for resnet created. Starting resnet forward passes."
@@ -90,6 +91,8 @@ def main():
     print("Loading LLM.")
     llm = LLM(model_name=args.llm)
 
+    print(train_problems)
+
     print("Starting LLM forward pass...")
     llm_results_save_dir = forward_pass_llm(
         llm,
@@ -103,22 +106,24 @@ def main():
     )
 
     # evaluate
-    eval_results = eval_all_files_in_folder(
-        llm_results_save_dir, train_problems, train_sols, False
-    )
-    # save eval
-    eval_path = os.path.join(llm_results_save_dir, "evaluations.json")
-    with open(eval_path, "w") as f:
-        json.dump(eval_results, f, indent=4)
-    print(f"Saving evaluation results to: {eval_path}")
+    if not args.skip_eval:
+        eval_results = eval_all_files_in_folder(
+            llm_results_save_dir, train_problems, train_sols, False
+        )
+        # save eval
+        eval_path = os.path.join(llm_results_save_dir, "evaluations.json")
+        with open(eval_path, "w") as f:
+            json.dump(eval_results, f, indent=4)
+        print(f"Saving evaluation results to: {eval_path}")
 
     # analyse number of primitives recommended vs used
-    analysis_results = analyze_prompt_usage(llm_results_save_dir)
-    # save analysis
-    analysis_path = os.path.join(llm_results_save_dir, "analysis.json")
-    with open(analysis_path, "w") as f:
-        json.dump(analysis_results, f, indent=4)
-    print(f"Saving analysis results to: {analysis_path}")
+    if not args.skip_analysis:
+        analysis_results = analyze_prompt_usage(llm_results_save_dir)
+        # save analysis
+        analysis_path = os.path.join(llm_results_save_dir, "analysis.json")
+        with open(analysis_path, "w") as f:
+            json.dump(analysis_results, f, indent=4)
+        print(f"Saving analysis results to: {analysis_path}")
 
     # ========================== FINISHED ==========================
 
@@ -245,6 +250,7 @@ def forward_pass_llm(
             "raw_generations": outputs_decoded,
             "reasoning": reasoning,
             "hypotheses": hypotheses,
+            "user_prompt": user_prompt,
             "recommended_primitives_vector": (
                 gt_primitives_label
                 if args.recommend_gt_primitives
@@ -349,6 +355,14 @@ def get_arguments():
         "--exp",
         type=str,
         help="Optional string used by runner.py for making save_dir",
+    )
+    parser.add_argument(
+        "--skip_eval",
+        action="store_true",
+        help="Flag to skip the eval / saving eval",
+    )
+    parser.add_argument(
+        "--skip_analysis", action="store_true", help="Flag to skip analysis"
     )
     args = parser.parse_args()
 

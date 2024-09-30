@@ -4,7 +4,6 @@ import os
 import neptune
 import numpy as np
 import torch
-import torch.nn as nn
 import torch.optim as optim
 from sklearn.metrics import (
     accuracy_score,
@@ -18,26 +17,6 @@ from arc import REPO_ROOT
 from arc.arcdsl import PRIMITIVES
 from arc.data import ARCDataLoader, REARCDataset, split_dataset
 from arc.run.resnet import ARCResNetClassifier
-
-
-class WeightedBinaryCrossEntropyLoss(nn.Module):
-    def __init__(self, fn_weight=15.0):
-        super(WeightedBinaryCrossEntropyLoss, self).__init__()
-        self.fn_weight = fn_weight
-
-    def forward(self, inputs, targets):
-        # Compute binary cross entropy
-        bce_loss = nn.BCEWithLogitsLoss(reduction="none")(inputs, targets)
-
-        # Create a mask for false negatives
-        fn_mask = (targets == 1) & (inputs.sigmoid() < 0.5)
-
-        # Apply higher weight to false negatives
-        weighted_loss = torch.where(
-            fn_mask, self.fn_weight * bce_loss, bce_loss
-        )
-
-        return weighted_loss.mean()
 
 
 def train_model(
@@ -204,14 +183,11 @@ def main():
 
     # train
     # criterion = nn.BCELoss()
-    if args.loss == "BCELogits":
-        criterion = torch.nn.BCEWithLogitsLoss(
-            pos_weight=torch.ones(len(PRIMITIVES)) * 7
-        ).to(
-            device
-        )  # roughly 7 negatives per positive in the dataset
-    elif args.loss == "weightedBCE":
-        criterion = WeightedBinaryCrossEntropyLoss(fn_weight=10.0)
+    criterion = torch.nn.BCEWithLogitsLoss(
+        pos_weight=torch.ones(len(PRIMITIVES)) * 7
+    ).to(
+        device
+    )  # roughly 7 negatives per positive in the dataset
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     model = train_model(

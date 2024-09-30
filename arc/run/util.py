@@ -10,6 +10,8 @@ def extract_reasoning_from_text(text):
 
 
 def extract_code_from_text(text):
+    if "</reasoning>" in text:
+        text = text[text.find("</reasoning>") :]
     pattern = r"```(.*?)```"
     match = re.search(pattern, text, re.DOTALL)
     if match:

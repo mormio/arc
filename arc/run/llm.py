@@ -1,7 +1,9 @@
 import argparse
 import json
 import os
+import time
 from abc import ABC
+from functools import wraps
 from typing import List
 
 import openai
@@ -23,17 +25,51 @@ LLM_MODELS = {
 
 
 def _retry_request(min_wait=4, max_wait=10, max_attempts=100):
-    return retry(
-        reraise=True,
-        stop=stop_after_attempt(max_attempts),
-        wait=wait_exponential(multiplier=1, min=min_wait, max=max_wait),
-        retry=(
-            retry_if_exception_type(openai.Timeout)
-            | retry_if_exception_type(openai.APIError)
-            | retry_if_exception_type(openai.APIConnectionError)
-            | retry_if_exception_type(openai.RateLimitError)
-        ),
-    )
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            attempts = 0
+            start_time = time.time()
+
+            @retry(
+                reraise=True,
+                stop=stop_after_attempt(max_attempts),
+                wait=wait_exponential(
+                    multiplier=1, min=min_wait, max=max_wait
+                ),
+                retry=(
+                    retry_if_exception_type(openai.Timeout)
+                    | retry_if_exception_type(openai.APIError)
+                    | retry_if_exception_type(openai.APIConnectionError)
+                    | retry_if_exception_type(openai.RateLimitError)
+                ),
+                before_sleep=lambda retry_state: print(
+                    f"Attempt {retry_state.attempt_number} failed. Retrying in {retry_state.next_action.sleep} seconds..."
+                ),
+            )
+            def retry_func():
+                nonlocal attempts
+                attempts += 1
+                print(
+                    f"Attempt {attempts} started at {time.time() - start_time:.2f} seconds"
+                )
+                return func(*args, **kwargs)
+
+            try:
+                result = retry_func()
+                print(
+                    f"Function succeeded after {attempts} attempts and {time.time() - start_time:.2f} seconds"
+                )
+                return result
+            except Exception as e:
+                print(
+                    f"All retry attempts failed. Total time: {time.time() - start_time:.2f} seconds"
+                )
+                raise e
+
+        return wrapper
+
+    return decorator
 
 
 class LLM(ABC):
@@ -97,7 +133,7 @@ class ARCAzureOpenAI(AzureOpenAI):
         token_estimate += 2
         return token_estimate
 
-    @_retry_request(min_wait=4, max_wait=10, max_attempts=500)
+    # @_retry_request(min_wait=4, max_wait=10, max_attempts=500)
     def generate(
         self,
         messages: List[dict],
@@ -108,15 +144,27 @@ class ARCAzureOpenAI(AzureOpenAI):
     ):
         tokens_in_messages = self.estimate_tokens(messages)
         max_tokens = tokens_in_messages + max_new_tokens
+        max_tokens = min(4096, max_tokens)
 
-        response = self.chat.completions.create(
-            model=self.model_name,
-            response_format={"type": "text"},
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            n=num_return_sequences,
-        )
+        success = False
+        wait = 1
+        while wait < 70:
+            time.sleep(wait)
+            try:
+                response = self.chat.completions.create(
+                    model=self.model_name,
+                    response_format={"type": "text"},
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    n=num_return_sequences,
+                )
+                success = True
+            except openai.RateLimitError:
+                wait *= 2
+
+        if not success:
+            raise openai.RateLimitError("Got openai RateLimitError")
 
         generated_texts_list_of_strings = [
             choice.message.content for choice in response.choices

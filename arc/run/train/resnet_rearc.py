@@ -105,7 +105,7 @@ def train_model(
 
 def make_dataloaders(args):
     task_dir = os.path.join(REPO_ROOT, "data", "re_arc", "tasks")
-    full_dataset = REARCDataset(task_dir=task_dir)
+    full_dataset = REARCDataset(task_dir=task_dir, debug=args.debug)
 
     if args.debug:
         full_dataset.data = full_dataset.data[:200]
@@ -117,13 +117,11 @@ def make_dataloaders(args):
         batch_size=args.batch_size,
         normalize=True,
         num_workers=min(4, os.cpu_count()),
-        channels=args.channels,
     )
     val_loader = ARCDataLoader(
         val_dataset,
         normalize=True,
         num_workers=min(4, os.cpu_count()),
-        channels=args.channels,
     )
     return train_loader, val_loader
 
@@ -139,9 +137,6 @@ def main():
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
         "--description", type=str, default="", help="For neptune"
-    )
-    parser.add_argument(
-        "--channels", type=int, help="Stack input/output grids as channels"
     )
     parser.add_argument(
         "--model", type=str, default="resnet18", help="architecture"
@@ -167,7 +162,6 @@ def main():
             "lr": args.lr,
             "val_split": args.val_split,
             "seed": args.seed,
-            "channels": args.channels,
             "model": args.model,
             "loss": args.loss,
         }
@@ -177,8 +171,6 @@ def main():
     print(f"Using device: {device}")
     model = ARCResNetClassifier(
         num_classes=len(PRIMITIVES),
-        channels=args.channels,
-        model=args.model,
     ).to(device)
 
     # train

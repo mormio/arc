@@ -18,6 +18,12 @@ from arc.arcdsl import PRIMITIVES
 from arc.data import ARCDataLoader, REARCDataset, split_dataset
 from arc.run.resnet import ARCResNetClassifier
 
+weights_pth_path = os.path.join(
+    os.path.dirname(REPO_ROOT),
+    "models",
+    "resnet_rearc_bcelogits.pth",
+)
+
 
 def train_model(
     model,
@@ -28,9 +34,10 @@ def train_model(
     num_epochs,
     device,
     run,
+    save_dir,
 ):
-    best_f1 = 0.84
-    for epoch in range(num_epochs):
+    best_f1 = 0.0
+    for _ in range(num_epochs):
         for phase in ["train", "val"]:
             running_loss = 0.0
             if phase == "train":
@@ -57,6 +64,7 @@ def train_model(
                         optimizer.step()
 
                 running_loss += loss.item() * inputs.size(0)
+                outputs = torch.sigmoid(outputs)
                 preds = (outputs > 0.5).float()
                 all_preds.extend(preds.cpu().numpy())
                 all_labels.extend(labels.cpu().numpy())
@@ -89,14 +97,12 @@ def train_model(
                 run[f"{phase}/epoch/recall"].append(epoch_recall)
 
             if phase == "val" and epoch_f1 > best_f1:
+                if not os.path.isdir(save_dir):
+                    os.makedirs(save_dir, exist_ok=True)
                 best_f1 = epoch_f1
                 torch.save(
-                    model.state_dict(),
-                    os.path.join(
-                        os.path.dirname(REPO_ROOT),
-                        "models",
-                        "resnet_rearc_bcelogits.pth",
-                    ),
+                    model.resnet.state_dict(),
+                    os.path.join(save_dir, "resnet_rearc.pth"),
                 )
 
     print(f"Best val F1: {best_f1:4f}")
@@ -130,18 +136,21 @@ def main():
     # args
     parser = argparse.ArgumentParser()
     parser.add_argument("--debug", action="store_true")
+    parser.add_argument(
+        "--exp", default="exp_resnet_rearc", help="Just to help runner.py"
+    )
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--num_epochs", type=int, default=50)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--val_split", type=float, default=0.1)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--save_dir", type=str, default="/tmp/resnet_rearc/")
     parser.add_argument(
         "--description", type=str, default="", help="For neptune"
     )
     parser.add_argument(
-        "--model", type=str, default="resnet18", help="architecture"
+        "--load_weights", action="store_true", help="Load weights for resnet"
     )
-    parser.add_argument("--loss", type=str, default="weightedBCE")
     args = parser.parse_args()
 
     # reproducibility
@@ -162,16 +171,19 @@ def main():
             "lr": args.lr,
             "val_split": args.val_split,
             "seed": args.seed,
-            "model": args.model,
-            "loss": args.loss,
+            "model": "resnet152",
+            "loss": "bcelogits",
         }
 
     # init model
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
-    model = ARCResNetClassifier(
-        num_classes=len(PRIMITIVES),
-    ).to(device)
+    model = ARCResNetClassifier(num_classes=len(PRIMITIVES)).to(device)
+    if args.load_weights:
+        state_dict = torch.load(
+            weights_pth_path,
+        )
+        model.load_custom_state_dict(state_dict)
 
     # train
     # criterion = nn.BCELoss()
@@ -191,6 +203,7 @@ def main():
         num_epochs=args.num_epochs,
         device=device,
         run=None if args.debug else run,
+        save_dir=args.save_dir,
     )
     if not args.debug:
         run.stop()

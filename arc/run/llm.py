@@ -148,7 +148,7 @@ class ARCAzureOpenAI(AzureOpenAI):
 
         success = False
         wait = 1
-        while wait < 70:
+        while (not success) and (wait <= 32):
             time.sleep(wait)
             try:
                 response = self.chat.completions.create(

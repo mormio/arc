@@ -1,5 +1,6 @@
 import importlib
 import inspect
+from typing import List, Union
 
 import numpy as np
 import torch
@@ -73,7 +74,10 @@ def load_data(dataset="ARC", **kwargs):
     return data
 
 
-def grid_to_ascii(grid: np.ndarray, separator: str = "|"):
+def grid_to_ascii(
+    grid: Union[List[List[int]], np.ndarray], separator: str = "|"
+):
     """Turn a string from the ARC dataset, representing a grid, into ascii."""
-
-    return "\n".join(separator.join(str(x) for x in row) for row in grid)
+    return "\n".join(
+        separator.join(str(x) for x in row) for row in np.array(grid)
+    )
